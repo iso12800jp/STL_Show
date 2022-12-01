@@ -31,10 +31,7 @@ struct TwoDPos {
 
 impl TwoDPos {
     fn new() -> Self {
-        TwoDPos {
-            x: 0f64,
-            y: 0f64,
-        }
+        TwoDPos { x: 0f64, y: 0f64 }
     }
 }
 
@@ -49,16 +46,33 @@ struct ViewTrans {
 
 impl ViewTrans {
     fn new() -> Self {
-        ViewTrans { mx_shift: cal_mx_unit(), mx_rotate_xw: cal_mx_unit(), mx_rotate_yw: cal_mx_unit(), mx_rotate_zw: cal_mx_unit(), mx_reverse_zv: cal_mx_unit(), mx_view_trans: cal_mx_unit() }
+        ViewTrans {
+            mx_shift: cal_mx_unit(),
+            mx_rotate_xw: cal_mx_unit(),
+            mx_rotate_yw: cal_mx_unit(),
+            mx_rotate_zw: cal_mx_unit(),
+            mx_reverse_zv: cal_mx_unit(),
+            mx_view_trans: cal_mx_unit(),
+        }
     }
-    
+
     fn cal_mx_view_trans(mut self) {
-        let params = [self.mx_reverse_zv, self.mx_rotate_zw,  self.mx_rotate_xw, self.mx_rotate_yw, self.mx_shift];
-        self.mx_shift = params.iter().copied().reduce(|a, b| cal_matrix(&a, &b)).unwrap();
+        let params = [
+            self.mx_reverse_zv,
+            self.mx_rotate_zw,
+            self.mx_rotate_xw,
+            self.mx_rotate_yw,
+            self.mx_shift,
+        ];
+        self.mx_shift = params
+            .iter()
+            .copied()
+            .reduce(|a, b| cal_matrix(&a, &b))
+            .unwrap();
     }
 }
 
-struct ScreenTrans {    
+struct ScreenTrans {
     height: usize,
     width: usize,
     depth: f64,
@@ -67,7 +81,12 @@ struct ScreenTrans {
 
 impl ScreenTrans {
     fn new(height: usize, width: usize, depth: f64) -> Self {
-        ScreenTrans { height, width, depth, mx_screen: cal_mx_unit() }
+        ScreenTrans {
+            height,
+            width,
+            depth,
+            mx_screen: cal_mx_unit(),
+        }
     }
 
     fn cal_mx_screen(mut self, view: &ThreeDPos) {
@@ -76,7 +95,7 @@ impl ScreenTrans {
             [ratio, 0f64, 0f64, 0f64],
             [0f64, ratio, 0f64, 0f64],
             [0f64, 0f64, ratio, 0f64],
-            [0f64, 0f64, 0f64, 1f64]
+            [0f64, 0f64, 0f64, 1f64],
         ];
     }
 }
@@ -130,13 +149,13 @@ fn rotate_xw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
     let delta_z = targ.z - view.z;
 
     let (cos_beta, sin_beta) = if delta_x == 0f64 && delta_y == 0f64 && delta_z == 0f64 {
+        (1f64, 0f64)
+    } else {
         (
             (delta_x.powi(2) + delta_z.powi(2)).sqrt()
                 / (delta_x.powi(2) + delta_y.powi(2) + delta_z.powi(2)).sqrt(),
             -delta_y / (delta_x.powi(2) + delta_y.powi(2) + delta_z.powi(2)).sqrt(),
         )
-    } else {
-        (1f64, 0f64)
     };
 
     let mut mx_rotate_xw = cal_mx_unit();
@@ -151,6 +170,7 @@ fn rotate_xw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
 fn rotate_zw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
     let mut mx_rotate_zw = cal_mx_unit();
 
+    // 仮に、gammaをゼロとする
     let gamma = 0f64;
 
     mx_rotate_zw[0][0] = gamma.to_radians().cos();
@@ -190,7 +210,6 @@ fn cal_matrix(mx_a: &[[f64; 4]; 4], mx_b: &[[f64; 4]; 4]) -> [[f64; 4]; 4] {
     mx_result
 }
 
-
 fn cal_view_pos(mx_view_trans: &[[f64; 4]; 4], world: &ThreeDPos) -> ThreeDPos {
     let mx_world = [world.x, world.y, world.z, world.w];
     let mut mx_result: [f64; 4] = [0f64; 4];
@@ -224,5 +243,8 @@ fn cal_screen_pos(mx_screen_trans: &[[f64; 4]; 4], view: &ThreeDPos) -> TwoDPos 
 }
 
 fn cal_display_pos(screen_trans: &ScreenTrans, pos: &TwoDPos) -> TwoDPos {
-    TwoDPos { x: screen_trans.width as f64 / 2f64 + pos.x, y: screen_trans.height as f64 / 2f64 - pos.y }
+    TwoDPos {
+        x: screen_trans.width as f64 / 2f64 + pos.x,
+        y: screen_trans.height as f64 / 2f64 - pos.y,
+    }
 }
