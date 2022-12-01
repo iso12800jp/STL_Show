@@ -3,7 +3,38 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-fn main() {}
+fn main() {
+    let mut model: Model = Model::init(read_stl("./modeling_robo.stl"));
+    let view = ThreeDPos::init(10f64, 10f64, 10f64);
+    let targ = ThreeDPos::init(0f64, 0f64, 0f64);
+    let gamma = 0f64;
+    let mut screen = ScreenTrans::init(640, 480, 50f64);
+    screen.cal_mx_screen(&view);
+    // 不変化
+    let screen = screen;
+
+    let mut view_param = ViewTrans::init(
+        shift(&view),
+        rotate_yw(&view, &targ),
+        rotate_xw(&view, &targ),
+        rotate_zw(&gamma),
+    );
+
+    view_param.cal_mx_view_trans();
+    // 不変化
+    let view_param = view_param;
+
+    model.cal_view_pos(&view_param.mx_view_trans);
+    model.cal_screen_pos(&screen.mx_screen_trans);
+    model.cal_display_pos(&screen);
+
+    // 不変化
+    let model = model;
+
+    model.display.iter().for_each(|d| {
+        d.iter().for_each(|p| println!("{}, {}", p.x, p.y));
+    });
+}
 
 #[derive(Copy, Clone)]
 struct ThreeDPos {
@@ -22,8 +53,27 @@ impl ThreeDPos {
             w: 1f64,
         }
     }
+
+    fn init(x: f64, y: f64, z: f64) -> Self {
+        ThreeDPos { x, y, z, w: 1f64 }
+    }
 }
 
+struct Stl {
+    pos: [ThreeDPos; 3],
+    _normal_vec: ThreeDPos,
+}
+
+impl Stl {
+    fn new() -> Self {
+        Stl {
+            pos: [ThreeDPos::new(); 3],
+            _normal_vec: ThreeDPos::new(),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 struct TwoDPos {
     x: f64,
     y: f64,
@@ -32,6 +82,89 @@ struct TwoDPos {
 impl TwoDPos {
     fn new() -> Self {
         TwoDPos { x: 0f64, y: 0f64 }
+    }
+}
+
+struct Model {
+    stl: Vec<Stl>,
+    view: Vec<[ThreeDPos; 3]>,
+    screen: Vec<[TwoDPos; 3]>,
+    display: Vec<[TwoDPos; 3]>,
+}
+
+impl Model {
+    fn new() -> Self {
+        Model {
+            stl: Vec::new(),
+            view: Vec::new(),
+            screen: Vec::new(),
+            display: Vec::new(),
+        }
+    }
+
+    fn init(stl: Vec<Stl>) -> Self {
+        Model {
+            stl,
+            view: Vec::new(),
+            screen: Vec::new(),
+            display: Vec::new(),
+        }
+    }
+
+    fn cal_view_pos(&mut self, mx_view_trans: &[[f64; 4]; 4]) {
+        self.stl.iter().for_each(|s| {
+            let mut view_pos = [ThreeDPos::new(); 3];
+            for i in 0..view_pos.len() {
+                let mx_pos = [s.pos[i].x, s.pos[i].y, s.pos[i].z, s.pos[i].w];
+                let mut mx_result = [0f64; 4];
+                for j in 0..mx_pos.len() {
+                    for k in 0..mx_pos.len() {
+                        mx_result[j] += mx_view_trans[j][k] * mx_pos[k];
+                    }
+                }
+                view_pos[i] = ThreeDPos {
+                    x: mx_result[0],
+                    y: mx_result[1],
+                    z: mx_result[2],
+                    w: mx_result[3],
+                };
+            }
+            self.view.push(view_pos);
+        })
+    }
+
+    fn cal_screen_pos(&mut self, mx_screen_trans: &[[f64; 4]; 4]) {
+
+        self.view.iter().for_each(|p| {
+            let mut screen_pos = [TwoDPos::new(); 3];
+            for i in 0..screen_pos.len() {
+                let mx_pos = [p[i].x, p[i].y, p[i].z, p[i].w];
+                let mut mx_result = [0f64; 4];
+                for j in 0..mx_pos.len() {
+                    for k in 0..mx_pos.len() {
+                        mx_result[j] += mx_screen_trans[j][k] * mx_pos[k];
+                    }
+                }
+                screen_pos[i] = TwoDPos {
+                    x: mx_result[0],
+                    y: mx_result[1],
+                };
+            }
+            self.screen.push(screen_pos);
+        })
+    }
+
+    fn cal_display_pos(&mut self, screen_trans: &ScreenTrans) {
+        self.screen.iter().for_each(|p| {
+            let mut screen_pos: [TwoDPos; 3] = [TwoDPos::new(); 3];
+            for i in 0..screen_pos.len() {
+                screen_pos[i] = TwoDPos {
+                    x: screen_trans.width as f64 / 2f64 + p[i].x,
+                    y: screen_trans.height as f64 / 2f64 - p[i].y,
+                };
+            }
+            self.display.push(screen_pos);
+        });
     }
 }
 
@@ -48,15 +181,31 @@ impl ViewTrans {
     fn new() -> Self {
         ViewTrans {
             mx_shift: cal_mx_unit(),
-            mx_rotate_xw: cal_mx_unit(),
             mx_rotate_yw: cal_mx_unit(),
+            mx_rotate_xw: cal_mx_unit(),
             mx_rotate_zw: cal_mx_unit(),
             mx_reverse_zv: cal_mx_unit(),
             mx_view_trans: cal_mx_unit(),
         }
     }
 
-    fn cal_mx_view_trans(mut self) {
+    fn init(
+        mx_shift: [[f64; 4]; 4],
+        mx_rotate_yw: [[f64; 4]; 4],
+        mx_rotate_xw: [[f64; 4]; 4],
+        mx_rotate_zw: [[f64; 4]; 4],
+    ) -> Self {
+        ViewTrans {
+            mx_shift,
+            mx_rotate_yw,
+            mx_rotate_xw,
+            mx_rotate_zw,
+            mx_reverse_zv: reverse_zv(),
+            mx_view_trans: cal_mx_unit(),
+        }
+    }
+
+    fn cal_mx_view_trans(&mut self) {
         let params = [
             self.mx_reverse_zv,
             self.mx_rotate_zw,
@@ -64,7 +213,7 @@ impl ViewTrans {
             self.mx_rotate_yw,
             self.mx_shift,
         ];
-        self.mx_shift = params
+        self.mx_view_trans = params
             .iter()
             .copied()
             .reduce(|a, b| cal_matrix(&a, &b))
@@ -76,22 +225,22 @@ struct ScreenTrans {
     height: usize,
     width: usize,
     depth: f64,
-    mx_screen: [[f64; 4]; 4],
+    mx_screen_trans: [[f64; 4]; 4],
 }
 
 impl ScreenTrans {
-    fn new(height: usize, width: usize, depth: f64) -> Self {
+    fn init(height: usize, width: usize, depth: f64) -> Self {
         ScreenTrans {
             height,
             width,
             depth,
-            mx_screen: cal_mx_unit(),
+            mx_screen_trans: cal_mx_unit(),
         }
     }
 
-    fn cal_mx_screen(mut self, view: &ThreeDPos) {
+    fn cal_mx_screen(&mut self, view: &ThreeDPos) {
         let ratio = self.depth / view.z;
-        self.mx_screen = [
+        self.mx_screen_trans = [
             [ratio, 0f64, 0f64, 0f64],
             [0f64, ratio, 0f64, 0f64],
             [0f64, 0f64, ratio, 0f64],
@@ -100,21 +249,7 @@ impl ScreenTrans {
     }
 }
 
-struct Stl {
-    pos: [ThreeDPos; 3],
-    normal_vec: ThreeDPos,
-}
-
-impl Stl {
-    fn new() -> Self {
-        Stl {
-            pos: [ThreeDPos::new(); 3],
-            normal_vec: ThreeDPos::new(),
-        }
-    }
-}
-
-fn shift(view: ThreeDPos) -> [[f64; 4]; 4] {
+fn shift(view: &ThreeDPos) -> [[f64; 4]; 4] {
     let mut mx_shift = cal_mx_unit();
     mx_shift[0][3] = -view.x;
     mx_shift[1][3] = -view.y;
@@ -122,7 +257,7 @@ fn shift(view: ThreeDPos) -> [[f64; 4]; 4] {
     mx_shift
 }
 
-fn rotate_yw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
+fn rotate_yw(view: &ThreeDPos, targ: &ThreeDPos) -> [[f64; 4]; 4] {
     let delta_x = targ.x - view.x;
     let delta_z = targ.z - view.z;
 
@@ -143,7 +278,7 @@ fn rotate_yw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
     mx_rotate_yw
 }
 
-fn rotate_xw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
+fn rotate_xw(view: &ThreeDPos, targ: &ThreeDPos) -> [[f64; 4]; 4] {
     let delta_x = targ.x - view.x;
     let delta_y = targ.y - view.y;
     let delta_z = targ.z - view.z;
@@ -167,11 +302,8 @@ fn rotate_xw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
     mx_rotate_xw
 }
 
-fn rotate_zw(view: ThreeDPos, targ: ThreeDPos) -> [[f64; 4]; 4] {
+fn rotate_zw(gamma: &f64) -> [[f64; 4]; 4] {
     let mut mx_rotate_zw = cal_mx_unit();
-
-    // 仮に、gammaをゼロとする
-    let gamma = 0f64;
 
     mx_rotate_zw[0][0] = gamma.to_radians().cos();
     mx_rotate_zw[0][1] = -gamma.to_radians().sin();
@@ -210,41 +342,60 @@ fn cal_matrix(mx_a: &[[f64; 4]; 4], mx_b: &[[f64; 4]; 4]) -> [[f64; 4]; 4] {
     mx_result
 }
 
-fn cal_view_pos(mx_view_trans: &[[f64; 4]; 4], world: &ThreeDPos) -> ThreeDPos {
-    let mx_world = [world.x, world.y, world.z, world.w];
-    let mut mx_result: [f64; 4] = [0f64; 4];
-    for i in 0..4 {
-        for j in 0..4 {
-            mx_result[i] += mx_view_trans[i][j] * mx_world[j];
+fn read_stl(path: &str) -> Vec<Stl> {
+    let mut stl_model: Vec<Stl> = Vec::new();
+    let file_to_read = File::open(path).expect("ファイルオープンに失敗");
+    let mut file_reader = BufReader::new(file_to_read);
+
+    let mut buf = String::new();
+
+    loop {
+        file_reader.read_line(&mut buf).unwrap();
+        buf.clear();
+        // 単位法線ベクトル
+        file_reader.read_line(&mut buf).unwrap();
+        if buf == "endsolid modeling_robo" {
+            break;
+        };
+        let tmp_n_vec = buf.trim().split(" ").collect::<Vec<&str>>()[2..]
+            .iter()
+            .map(|s| s.trim().parse::<f64>().unwrap())
+            .collect::<Vec<f64>>();
+        buf.clear();
+        // ゴミ("outer loop")
+        file_reader.read_line(&mut buf).unwrap();
+        buf.clear();
+        // 3ポリゴン
+        let mut tmp_poly: [ThreeDPos; 3] = [ThreeDPos::new(); 3];
+        for i in 0..3 {
+            file_reader.read_line(&mut buf).unwrap();
+            let tmp = buf.trim().split(" ").collect::<Vec<&str>>()[1..]
+                .iter()
+                .map(|s| s.trim().parse::<f64>().unwrap())
+                .collect::<Vec<f64>>();
+            tmp_poly[i].x = tmp[0];
+            tmp_poly[i].y = tmp[1];
+            tmp_poly[i].z = tmp[2];
+            tmp_poly[i].w = 1f64;
+            buf.clear();
         }
+        // 不変化
+        let tmp_poly = tmp_poly;
+
+        // ゴミ("endloop", "endfacet")
+        file_reader.read_line(&mut buf).unwrap();
+        buf.clear();
+
+        stl_model.push(Stl {
+            pos: tmp_poly,
+            _normal_vec: ThreeDPos {
+                x: tmp_n_vec[0],
+                y: tmp_n_vec[1],
+                z: tmp_n_vec[2],
+                w: 1f64,
+            },
+        })
     }
 
-    ThreeDPos {
-        x: mx_result[0],
-        y: mx_result[1],
-        z: mx_result[2],
-        w: mx_result[3],
-    }
-}
-
-fn cal_screen_pos(mx_screen_trans: &[[f64; 4]; 4], view: &ThreeDPos) -> TwoDPos {
-    let mx_view = [view.x, view.y, view.z, view.w];
-    let mut mx_result: [f64; 4] = [0f64; 4];
-    for i in 0..4 {
-        for j in 0..4 {
-            mx_result[i] += mx_screen_trans[i][j] * mx_view[j];
-        }
-    }
-
-    TwoDPos {
-        x: mx_result[0],
-        y: mx_result[1],
-    }
-}
-
-fn cal_display_pos(screen_trans: &ScreenTrans, pos: &TwoDPos) -> TwoDPos {
-    TwoDPos {
-        x: screen_trans.width as f64 / 2f64 + pos.x,
-        y: screen_trans.height as f64 / 2f64 - pos.y,
-    }
+    stl_model
 }
