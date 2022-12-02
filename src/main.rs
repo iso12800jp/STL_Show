@@ -1,40 +1,57 @@
+use eframe::egui::*;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
 };
-use eframe::{egui::*};
 
 fn main() {
-    let mut model: Model = Model::init(read_stl("./stl/modeling_robo.stl"));
-    let view = ThreeDPos::init(10f64, 15f64, 10f64);
-    let targ = ThreeDPos::init(0f64, 0f64, 0f64);
-    let gamma = 0f64;
-    let mut screen = ScreenTrans::init(640, 480, 50f64);
-    screen.cal_mx_screen(&view);
-    // 不変化
-    let screen = screen;
+    // let model: Model = Model::init(read_stl("./stl/modeling_robo.stl"));
+    // let view = ThreeDPos::init(10f64, 15f64, 10f64);
+    // let targ = ThreeDPos::init(0f64, 0f64, 0f64);
+    // let gamma = 0f64;
+    // let screen = ScreenTrans::init(640, 480, 50f64);
+    // screen.cal_mx_screen(&view);
+    // // 不変化
+    // let screen = screen;
 
-    let mut view_param = ViewTrans::init(
-        shift(&view),
-        rotate_yw(&view, &targ),
-        rotate_xw(&view, &targ),
-        rotate_zw(&gamma),
+    // let mut view_param = ViewTrans::init(
+    //     shift(&view),
+    //     rotate_yw(&view, &targ),
+    //     rotate_xw(&view, &targ),
+    //     rotate_zw(&gamma),
+    // );
+
+    // view_param.cal_mx_view_trans();
+    // // 不変化
+    // let view_param = view_param;
+
+    // model.cal_view_pos(&view_param.mx_view_trans);
+    // model.cal_screen_pos(&screen.mx_screen_trans);
+    // model.cal_display_pos(&screen);
+
+    // // 不変化
+    // let model = model;
+
+    //以下描画
+    let native_options = eframe::NativeOptions {
+        initial_window_size: Some((1280f32, 720f32).into()),
+        resizable: false,
+        ..eframe::NativeOptions::default()
+    };
+    eframe::run_native(
+        "RoboWire",
+        native_options,
+        Box::new(|cc| Box::new(
+            DisplayRobo::init(
+                cc, 
+                Model::init(read_stl("./stl/modeling_robo.stl")),
+                ThreeDPos::init(0f64, -32f64, 10f64),
+                ThreeDPos::init(0f64, 0f64, 0f64),
+                0f64,
+                ScreenTrans::init(1280, 720, 50f64)
+            )
+        )),
     );
-
-    view_param.cal_mx_view_trans();
-    // 不変化
-    let view_param = view_param;
-
-    model.cal_view_pos(&view_param.mx_view_trans);
-    model.cal_screen_pos(&screen.mx_screen_trans);
-    model.cal_display_pos(&screen);
-
-    // 不変化
-    let model = model;
-
-    // model.display.iter().for_each(|d| {
-    //     d.iter().for_each(|p| println!("{}, {}", p.x, p.y));
-    // });
 }
 
 #[derive(Copy, Clone)]
@@ -45,7 +62,20 @@ struct ThreeDPos {
     w: f64,
 }
 
-  
+impl ThreeDPos {
+    fn new() -> Self {
+        ThreeDPos {
+            x: 0f64,
+            y: 0f64,
+            z: 0f64,
+            w: 1f64,
+        }
+    }
+
+    fn init(x: f64, y: f64, z: f64) -> Self {
+        ThreeDPos { x, y, z, w: 1f64 }
+    }
+}
 
 struct Stl {
     pos: [ThreeDPos; 3],
@@ -70,6 +100,10 @@ struct TwoDPos {
 impl TwoDPos {
     fn new() -> Self {
         TwoDPos { x: 0f64, y: 0f64 }
+    }
+
+    fn to_pos2(&self) -> Pos2 {
+        pos2(self.x as f32, self.y as f32)
     }
 }
 
@@ -122,7 +156,6 @@ impl Model {
     }
 
     fn cal_screen_pos(&mut self, mx_screen_trans: &[[f64; 4]; 4]) {
-
         self.view.iter().for_each(|p| {
             let mut screen_pos = [TwoDPos::new(); 3];
             for i in 0..screen_pos.len() {
@@ -153,6 +186,12 @@ impl Model {
             }
             self.display.push(screen_pos);
         });
+    }
+
+    fn clear_trans_pos(&mut self) {
+        self.view =  Vec::new();
+        self.screen =  Vec::new();
+        self.display = Vec::new();
     }
 }
 
@@ -217,7 +256,7 @@ struct ScreenTrans {
 }
 
 impl ScreenTrans {
-    fn init(height: usize, width: usize, depth: f64) -> Self {
+    fn init(width: usize, height: usize, depth: f64) -> Self {
         ScreenTrans {
             height,
             width,
@@ -386,4 +425,80 @@ fn read_stl(path: &str) -> Vec<Stl> {
     }
 
     stl_model
+}
+
+pub struct DisplayRobo {
+    model: Model,
+    view: ThreeDPos,
+    targ: ThreeDPos,
+    gamma: f64,
+    screen: ScreenTrans,
+    view_param: ViewTrans,
+}
+
+impl DisplayRobo {
+    fn init(
+        _cc: &eframe::CreationContext<'_>,
+        model: Model,
+        view: ThreeDPos,
+        targ: ThreeDPos,
+        gamma: f64,
+        screen: ScreenTrans,
+    ) -> Self {
+        DisplayRobo {
+            model,
+            view,
+            targ,
+            gamma,
+            screen,
+            view_param: ViewTrans::new(),
+        }
+    }
+}
+
+impl eframe::App for DisplayRobo {
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
+    fn update(&mut self, _ctx: &Context, _frame: &mut eframe::Frame) {
+
+        println!("{}", self.view.y);
+        self.view.y = match self.view.y as isize {
+            31 => -32f64,
+            _ => self.view.y + 1f64
+        };
+
+        self.model.clear_trans_pos();
+
+        self.screen.cal_mx_screen(&self.view);
+        self.view_param = ViewTrans::init(
+            shift(&self.view),
+            rotate_yw(&self.view, &self.targ),
+            rotate_xw(&self.view, &self.targ),
+            rotate_zw(&self.gamma),
+        );
+        self.view_param.cal_mx_view_trans();
+
+        self.model.cal_view_pos(&self.view_param.mx_view_trans);
+        self.model.cal_screen_pos(&self.screen.mx_screen_trans);
+        self.model.cal_display_pos(&self.screen);
+
+        println!("{}, {}", self.model.display[0][0].x, self.model.display[0][0].y);
+
+        CentralPanel::default().show(_ctx, |ui| {
+            // ui.painter().rect_filled(Rect { min: Pos2 { x: 0f32, y: 0f32 }, max: Pos2 { x: self.screen.width as f32, y: self.screen.height as f32 } }, 0f32, Color32::BLACK);
+            self.model.display.iter().for_each(|p| {
+                ui.painter().line_segment(
+                    [p[1].to_pos2(), p[0].to_pos2()],
+                    Stroke::new(1f32, Color32::YELLOW),
+                );
+                ui.painter().line_segment(
+                    [p[2].to_pos2(), p[1].to_pos2()],
+                    Stroke::new(1f32, Color32::YELLOW),
+                );
+                ui.painter().line_segment(
+                    [p[0].to_pos2(), p[2].to_pos2()],
+                    Stroke::new(1f32, Color32::YELLOW),
+                );
+            })
+        });
+    }
 }
