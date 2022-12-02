@@ -2,10 +2,11 @@ use std::{
     fs::File,
     io::{BufRead, BufReader},
 };
+use eframe::{egui::*};
 
 fn main() {
-    let mut model: Model = Model::init(read_stl("./modeling_robo.stl"));
-    let view = ThreeDPos::init(10f64, 10f64, 10f64);
+    let mut model: Model = Model::init(read_stl("./stl/modeling_robo.stl"));
+    let view = ThreeDPos::init(10f64, 15f64, 10f64);
     let targ = ThreeDPos::init(0f64, 0f64, 0f64);
     let gamma = 0f64;
     let mut screen = ScreenTrans::init(640, 480, 50f64);
@@ -31,9 +32,9 @@ fn main() {
     // 不変化
     let model = model;
 
-    model.display.iter().for_each(|d| {
-        d.iter().for_each(|p| println!("{}, {}", p.x, p.y));
-    });
+    // model.display.iter().for_each(|d| {
+    //     d.iter().for_each(|p| println!("{}, {}", p.x, p.y));
+    // });
 }
 
 #[derive(Copy, Clone)]
@@ -44,20 +45,7 @@ struct ThreeDPos {
     w: f64,
 }
 
-impl ThreeDPos {
-    fn new() -> Self {
-        ThreeDPos {
-            x: 0f64,
-            y: 0f64,
-            z: 0f64,
-            w: 1f64,
-        }
-    }
-
-    fn init(x: f64, y: f64, z: f64) -> Self {
-        ThreeDPos { x, y, z, w: 1f64 }
-    }
-}
+  
 
 struct Stl {
     pos: [ThreeDPos; 3],
@@ -354,7 +342,7 @@ fn read_stl(path: &str) -> Vec<Stl> {
         buf.clear();
         // 単位法線ベクトル
         file_reader.read_line(&mut buf).unwrap();
-        if buf == "endsolid modeling_robo" {
+        if buf.trim().split(" ").nth(0).unwrap() == "endsolid" {
             break;
         };
         let tmp_n_vec = buf.trim().split(" ").collect::<Vec<&str>>()[2..]
