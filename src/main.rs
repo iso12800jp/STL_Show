@@ -1,38 +1,13 @@
-use eframe::egui::*;
-use std::{
-    fs::File,
-    io::{self, BufRead, BufReader},
+use {
+    coord_transforms::prelude::*,
+    eframe::egui::*,
+    std::{
+        fs::File,
+        io::{self, BufRead, BufReader},
+    },
 };
 
 fn main() {
-    
-    // let model: Model = Model::init(read_stl("./stl/modeling_robo.stl"));
-    // let view = ThreeDPos::init(10f64, 15f64, 10f64);
-    // let targ = ThreeDPos::init(0f64, 0f64, 0f64);
-    // let gamma = 0f64;
-    // let screen = ScreenTrans::init(640, 480, 50f64);
-    // screen.cal_mx_screen(&view);
-    // // 不変化
-    // let screen = screen;
-
-    // let mut view_param = ViewTrans::init(
-    //     shift(&view),
-    //     rotate_yw(&view, &targ),
-    //     rotate_xw(&view, &targ),
-    //     rotate_zw(&gamma),
-    // );
-
-    // view_param.cal_mx_view_trans();
-    // // 不変化
-    // let view_param = view_param;
-
-    // model.cal_view_pos(&view_param.mx_view_trans);
-    // model.cal_screen_pos(&screen.mx_screen_trans);
-    // model.cal_display_pos(&screen);
-
-    // // 不変化
-    // let model = model;
-
     //以下描画
     let native_options = eframe::NativeOptions {
         initial_window_size: Some((1280f32, 720f32).into()),
@@ -46,10 +21,11 @@ fn main() {
             Box::new(DisplayRobo::init(
                 cc,
                 Model::init(read_stl()),
-                ThreeDPos::init(0f64, 20f64, 0f64),
+                ThreeDPos::init(0f64, 100f64, 0f64),
                 ThreeDPos::init(0f64, 0f64, 0f64),
                 0f64,
                 ScreenTrans::init(1280, 720),
+                120f64,
             ))
         }),
     );
@@ -157,21 +133,16 @@ impl Model {
         })
     }
 
-
     fn cal_screen_pos(&mut self, depth: f64) {
         self.view.iter().for_each(|p| {
             let mut screen_pos = [TwoDPos::new(); 3];
             for i in 0..screen_pos.len() {
                 let mx_pos = [p[i].x, p[i].y, p[i].z, p[i].w];
 
-
                 let mx_result = cal_pos(&cal_screen_trans(&depth, &p[i]), &mx_pos);
-                // for j in 0..mx_pos.len() {
-                //     for k in 0..mx_pos.len() {
-                //         mx_result[j] += cal_screen_trans(&depth, &p[i])[j][k] * mx_pos[k];
-                //     }
-                // }
-                
+
+                // println!("{:?}", mx_result);
+
                 screen_pos[i] = TwoDPos {
                     x: mx_result[0],
                     y: mx_result[1],
@@ -268,12 +239,15 @@ impl ScreenTrans {
             depth: 0f64,
         }
     }
+
+    fn cal_depth(&mut self, fov: &f64) {
+        self.depth = self.width as f64 / fov.to_radians().tan();
+    }
 }
 
-fn cal_screen_trans(depth: &f64,  pv: &ThreeDPos) -> [[f64; 4]; 4]{
-    
+fn cal_screen_trans(depth: &f64, pv: &ThreeDPos) -> [[f64; 4]; 4] {
     let ratio = depth / pv.z;
-    println!("{}", ratio);
+    // println!("{}", ratio);
     [
         [ratio, 0f64, 0f64, 0f64],
         [0f64, ratio, 0f64, 0f64],
@@ -282,19 +256,18 @@ fn cal_screen_trans(depth: &f64,  pv: &ThreeDPos) -> [[f64; 4]; 4]{
     ]
 }
 
-fn cal_distance_2d(pos_a: &TwoDPos, pos_b: &TwoDPos) -> f64 {
-    let delta_x = pos_a.x - pos_b.x;
-    let delta_y = pos_a.y - pos_b.y;
-    (delta_x.powi(2) + delta_y.powi(2)).sqrt()
-}
+// fn cal_distance_2d(pos_a: &TwoDPos, pos_b: &TwoDPos) -> f64 {
+//     let delta_x = pos_a.x - pos_b.x;
+//     let delta_y = pos_a.y - pos_b.y;
+//     (delta_x.powi(2) + delta_y.powi(2)).sqrt()
+// }
 
-fn cal_distance_3d(pos_a: &ThreeDPos, pos_b: &ThreeDPos) -> f64 {
-    let delta_x = pos_a.x - pos_b.x;
-    let delta_y = pos_a.y - pos_b.y;
-    let delta_z = pos_a.z - pos_b.z;
-    (delta_x.powi(2) + delta_y.powi(2) +  delta_z .powi(2)).sqrt()
-}
-
+// fn cal_distance_3d(pos_a: &ThreeDPos, pos_b: &ThreeDPos) -> f64 {
+//     let delta_x = pos_a.x - pos_b.x;
+//     let delta_y = pos_a.y - pos_b.y;
+//     let delta_z = pos_a.z - pos_b.z;
+//     (delta_x.powi(2) + delta_y.powi(2) + delta_z.powi(2)).sqrt()
+// }
 
 fn shift(view: &ThreeDPos) -> [[f64; 4]; 4] {
     let mut mx_shift = cal_mx_unit();
@@ -400,7 +373,6 @@ fn cal_pos(mx_a: &[[f64; 4]; 4], mx_pos: &[f64; 4]) -> [f64; 4] {
 }
 
 fn read_stl() -> Vec<Stl> {
-
     println!("input path > ");
 
     let mut buf = String::new();
@@ -409,7 +381,6 @@ fn read_stl() -> Vec<Stl> {
     let path = buf.trim().split(">").nth(0).unwrap().trim().clone();
 
     let mut stl_model: Vec<Stl> = Vec::new();
-    println!("{}", &path);
 
     let file_to_read = File::open(path).expect("ファイルオープンに失敗");
     let mut file_reader = BufReader::new(file_to_read);
@@ -474,6 +445,7 @@ pub struct DisplayRobo {
     gamma: f64,
     screen: ScreenTrans,
     view_param: ViewTrans,
+    fov: f64,
 }
 
 impl DisplayRobo {
@@ -484,6 +456,7 @@ impl DisplayRobo {
         targ: ThreeDPos,
         gamma: f64,
         screen: ScreenTrans,
+        fov: f64,
     ) -> Self {
         DisplayRobo {
             model,
@@ -492,6 +465,7 @@ impl DisplayRobo {
             gamma,
             screen,
             view_param: ViewTrans::new(),
+            fov,
         }
     }
 }
@@ -499,41 +473,11 @@ impl DisplayRobo {
 impl eframe::App for DisplayRobo {
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn update(&mut self, _ctx: &Context, _frame: &mut eframe::Frame) {
-
-        // let x_angle: i32 = if self.view.x == 0f64 {
-        //     if self.view.y > 0f64 {
-        //         180
-        //     } else if self.view.y < 0f64 {
-        //         0
-        //     // } else {
-        //     //     panic!("視点と目標点が一致しています");
-        //     }
-        // } else {
-        //     (self.view.x / cal_distance_2d(&TwoDPos { x: self.view.x, y: self.view.y }, &TwoDPos { x: self.targ.x, y: self.targ.y })).acos().to_degrees() as i32
-        // };
-
-        // println!("{}", x_angle);
-
-        // (cal_distance_2d(&TwoDPos { x: self.view.x, y: self.view.y }, &TwoDPos { x: self.targ.x, y: self.targ.y }) / self.view.x).acos();
-        // println!("{}, {}, {}", if self.view.x == 0f64 {
-        //     if self.view.y > 0f64 {
-        //         180
-        //     } else if self.view.y < 0f64 {
-        //         0
-        //     } else {
-        //         panic!("視点と目標点が一致しています");
-        //     }
-        // } else {
-        //     (cal_distance_2d(&TwoDPos { x: self.view.x, y: self.view.y }, &TwoDPos { x: self.targ.x, y: self.targ.y }) / self.view.x).acos() as i32
-        // }, self.view.x, x_angle);
-        
-        println!("{}", self.view.y);
-        self.view.y = match self.view.y as isize {
-            1 => 20f64,
-            _ => self.view.y + -1f64,
+        // println!("{}", self.view.y);
+        self.view.z = match self.view.z as isize {
+            100 => 0f64,
+            _ => self.view.z + 1f64,
         };
-
-        self.screen.depth = cal_distance_3d(&self.view, &self.targ);
 
         self.model.clear_trans_pos();
 
@@ -546,12 +490,15 @@ impl eframe::App for DisplayRobo {
         self.view_param.cal_mx_view_trans();
 
         self.model.cal_view_pos(&self.view_param.mx_view_trans);
+
+        // 目標点上にスクリーンがあるものとする
+        // self.screen.depth = cal_distance_3d(&self.view, &self.targ);
+        self.screen.cal_depth(&self.fov);
+
         self.model.cal_screen_pos(self.screen.depth);
         self.model.cal_display_pos(&self.screen);
 
-        println!("{}, {}, {}", self.model.view[9][1].x, self.model.view[9][1].y, self.model.view[9][1].z);
-
-        println!("{}, {}", self.model.screen[9][1].x, self.model.screen[9][1].y);
+        // println!("{}, {}, {}", self.model.view[9][1].x, self.model.view[9][1].y, self.model.view[9][1].z);
 
         CentralPanel::default().show(_ctx, |ui| {
             self.model.display.iter().for_each(|p| {
