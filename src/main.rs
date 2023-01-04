@@ -1,9 +1,8 @@
 use {
-    coord_transforms::prelude::*,
     eframe::egui::*,
     std::{
         fs::File,
-        io::{self, BufRead, BufReader},
+        io::{self, BufRead, BufReader, Write},
     },
 };
 
@@ -21,11 +20,39 @@ fn main() {
             Box::new(DisplayRobo::init(
                 cc,
                 Model::init(read_stl()),
-                ThreeDPos::init(0f64, 100f64, 0f64),
+                ThreeDPos::init(
+                    {
+                        let mut buf = String::new();
+                        print!("View from (x) \x1b[32m>\x1b[m ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut buf).unwrap();
+                        buf.trim().parse::<f64>().unwrap()
+                    },
+                    {
+                        let mut buf = String::new();
+                        print!("          (y) \x1b[32m>\x1b[m ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut buf).unwrap();
+                        buf.trim().parse::<f64>().unwrap()
+                    },
+                    {
+                        let mut buf = String::new();
+                        print!("          (z) \x1b[32m>\x1b[m ");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut buf).unwrap();
+                        buf.trim().parse::<f64>().unwrap()
+                    },
+                ),
                 ThreeDPos::init(0f64, 0f64, 0f64),
                 0f64,
                 ScreenTrans::init(1280, 720),
-                120f64,
+                {
+                    let mut buf = String::new();
+                    print!("Field of view (FOV) \x1b[32m>\x1b[m ");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut buf).unwrap();
+                    buf.trim().parse::<f64>().unwrap()
+                },
             ))
         }),
     );
@@ -59,15 +86,6 @@ struct Stl {
     _normal_vec: ThreeDPos,
 }
 
-impl Stl {
-    fn new() -> Self {
-        Stl {
-            pos: [ThreeDPos::new(); 3],
-            _normal_vec: ThreeDPos::new(),
-        }
-    }
-}
-
 #[derive(Copy, Clone)]
 struct TwoDPos {
     x: f64,
@@ -92,15 +110,6 @@ struct Model {
 }
 
 impl Model {
-    fn new() -> Self {
-        Model {
-            stl: Vec::new(),
-            view: Vec::new(),
-            screen: Vec::new(),
-            display: Vec::new(),
-        }
-    }
-
     fn init(stl: Vec<Stl>) -> Self {
         Model {
             stl,
@@ -116,12 +125,6 @@ impl Model {
             for i in 0..view_pos.len() {
                 let mx_pos = [s.pos[i].x, s.pos[i].y, s.pos[i].z, s.pos[i].w];
                 let mx_result = cal_pos(&mx_view_trans, &mx_pos);
-                // let mut mx_result = [0f64; 4];
-                // for j in 0..mx_pos.len() {
-                //     for k in 0..mx_pos.len() {
-                //         mx_result[j] += mx_view_trans[j][k] * mx_pos[k];
-                //     }
-                // }
                 view_pos[i] = ThreeDPos {
                     x: mx_result[0],
                     y: mx_result[1],
@@ -140,8 +143,6 @@ impl Model {
                 let mx_pos = [p[i].x, p[i].y, p[i].z, p[i].w];
 
                 let mx_result = cal_pos(&cal_screen_trans(&depth, &p[i]), &mx_pos);
-
-                // println!("{:?}", mx_result);
 
                 screen_pos[i] = TwoDPos {
                     x: mx_result[0],
@@ -247,7 +248,6 @@ impl ScreenTrans {
 
 fn cal_screen_trans(depth: &f64, pv: &ThreeDPos) -> [[f64; 4]; 4] {
     let ratio = depth / pv.z;
-    // println!("{}", ratio);
     [
         [ratio, 0f64, 0f64, 0f64],
         [0f64, ratio, 0f64, 0f64],
@@ -255,19 +255,6 @@ fn cal_screen_trans(depth: &f64, pv: &ThreeDPos) -> [[f64; 4]; 4] {
         [0f64, 0f64, 0f64, 1f64],
     ]
 }
-
-// fn cal_distance_2d(pos_a: &TwoDPos, pos_b: &TwoDPos) -> f64 {
-//     let delta_x = pos_a.x - pos_b.x;
-//     let delta_y = pos_a.y - pos_b.y;
-//     (delta_x.powi(2) + delta_y.powi(2)).sqrt()
-// }
-
-// fn cal_distance_3d(pos_a: &ThreeDPos, pos_b: &ThreeDPos) -> f64 {
-//     let delta_x = pos_a.x - pos_b.x;
-//     let delta_y = pos_a.y - pos_b.y;
-//     let delta_z = pos_a.z - pos_b.z;
-//     (delta_x.powi(2) + delta_y.powi(2) + delta_z.powi(2)).sqrt()
-// }
 
 fn shift(view: &ThreeDPos) -> [[f64; 4]; 4] {
     let mut mx_shift = cal_mx_unit();
@@ -373,12 +360,13 @@ fn cal_pos(mx_a: &[[f64; 4]; 4], mx_pos: &[f64; 4]) -> [f64; 4] {
 }
 
 fn read_stl() -> Vec<Stl> {
-    println!("input path > ");
+    print!("Path of stl file \x1b[32m>\x1b[m ");
+    io::stdout().flush().unwrap();
 
     let mut buf = String::new();
     io::stdin().read_line(&mut buf).unwrap();
 
-    let path = buf.trim().split(">").nth(0).unwrap().trim().clone();
+    let path = buf.trim().clone();
 
     let mut stl_model: Vec<Stl> = Vec::new();
 
@@ -473,33 +461,31 @@ impl DisplayRobo {
 impl eframe::App for DisplayRobo {
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
     fn update(&mut self, _ctx: &Context, _frame: &mut eframe::Frame) {
-        // println!("{}", self.view.y);
-        self.view.z = match self.view.z as isize {
-            100 => 0f64,
-            _ => self.view.z + 1f64,
-        };
-
+        // 変換後の座標ベクタを消去
         self.model.clear_trans_pos();
 
+        // 終始点による変換行列を設定
         self.view_param = ViewTrans::init(
             shift(&self.view),
             rotate_yw(&self.view, &self.targ),
             rotate_xw(&self.view, &self.targ),
             rotate_zw(&self.gamma),
         );
+        // 合成行列を取得
         self.view_param.cal_mx_view_trans();
 
+        // ビュー座標を計算
         self.model.cal_view_pos(&self.view_param.mx_view_trans);
 
-        // 目標点上にスクリーンがあるものとする
-        // self.screen.depth = cal_distance_3d(&self.view, &self.targ);
+        // FOVによりdepthを計算
         self.screen.cal_depth(&self.fov);
 
+        // depthをもとにスクリーン座標を計算
         self.model.cal_screen_pos(self.screen.depth);
+        // スクリーン座標とスクリーン情報をもとにディスプレイ座標を計算
         self.model.cal_display_pos(&self.screen);
 
-        // println!("{}, {}, {}", self.model.view[9][1].x, self.model.view[9][1].y, self.model.view[9][1].z);
-
+        // 描画
         CentralPanel::default().show(_ctx, |ui| {
             self.model.display.iter().for_each(|p| {
                 ui.painter().line_segment(
